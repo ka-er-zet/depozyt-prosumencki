@@ -1,0 +1,38 @@
+name: Update RCEm
+
+on:
+  schedule:
+    - cron: '0 6 2 * *' # run at 06:00 UTC on the 2nd day of each month (adjust as needed)
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run scraper
+        run: python update_rcem.py
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add rcem.json || true
+          if ! git diff --staged --quiet; then
+            git commit -m 'Update RCEm data'
+            git push
+          else
+            echo 'No changes to commit'
+          fi

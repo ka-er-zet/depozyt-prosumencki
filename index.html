@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Szacowanie Wartości Depozytu Konsumenckiego</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@1/css/pico.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <main class="container">
+        <header>
+            <h1>Szacowanie Wartości Depozytu Konsumenckiego</h1>
+            <p>Wczytaj swoje pliki CSV z danymi o energii oddanej do sieci, aby oszacować wartość depozytu.</p>
+        </header>
+
+        <section>
+            <label for="file-input">Wybierz pliki CSV</label>
+            <input type="file" id="file-input" accept=".csv" multiple>
+        </section>
+
+        <button id="calculate-btn">Oblicz Wartość Depozytu (RCE + RCEm)</button>
+
+        <div id="status"></div>
+        
+        <div id="results-container" style="display: none;">
+            <details id="hourly-results" open>
+                <summary><strong>Wyniki RCE/RCEt (ceny godzinowe)</strong></summary>
+                <div id="hourly-results-content">
+                    <!-- Wyniki godzinowe będą tutaj -->
+                </div>
+            </details>
+            
+            <details id="monthly-results" open>
+                <summary><strong>Wyniki RCEm (ceny miesięczne)</strong></summary>
+                <div id="monthly-results-content">
+                    <!-- Wyniki miesięczne będą tutaj -->
+                </div>
+            </details>
+        </div>
+
+        <article id="total-summary-container" style="display: none;">
+            <!-- Podsumowanie całkowite będzie tutaj -->
+        </article>
+
+    </main>
+
+    <script src="script.js"></script>
+</body>
+</html>
