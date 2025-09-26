@@ -2,11 +2,11 @@
 """
 Fetch hourly RCE prices from PSE and maintain a local `rce.json` file keyed by ISO datetime.
 
-This script can backfill from 2004-07-01 and will append new hours when run daily.
+This script can backfill from 2024-07-01 and will append new hours when run daily.
 
 Output format (rce.json):
 {
-  "2004-07-01T00:00:00": 0.0123,
+    "2024-07-01T00:00:00": 0.0123,
   "2004-07-01T00:15:00": 0.0000,
   ...
 }
@@ -24,7 +24,7 @@ import sys
 API_BASE = 'https://api.raporty.pse.pl/api/rce-pln'
 OUT_FILE = Path(__file__).parent / 'rce.json'
 
-DEFAULT_START = date(2004, 7, 1)
+DEFAULT_START = date(2024, 7, 1)
 
 
 def iso(dt: datetime) -> str:
@@ -86,7 +86,21 @@ def daterange_chunks(start: date, end: date, chunk_days=30):
 def main(start_date: date | None = None, end_date: date | None = None):
     existing = load_existing()
     if start_date is None:
-        # determine earliest needed: default start or earliest missing from existing
+        # If we already have data, fetch incrementally from the last recorded day
+        # to avoid re-downloading everything on every run. If rce.json is empty,
+        # fall back to DEFAULT_START.
+        if existing:
+            try:
+                last_dt = max(datetime.fromisoformat(k) for k in existing.keys())
+                # start from the date of the last known entry (will re-fetch that day but
+                # duplicates are skipped). This keeps a small overlap as safety.
+                start_date = last_dt.date()
+            except Exception:
+                start_date = DEFAULT_START
+        else:
+            start_date = DEFAULT_START
+    # ensure start_date is not before DEFAULT_START
+    if start_date < DEFAULT_START:
         start_date = DEFAULT_START
     if end_date is None:
         end_date = date.today()
