@@ -4,25 +4,97 @@ document.addEventListener('DOMContentLoaded', () => {
     const statusDiv = document.getElementById('status');
     const resultsContainer = document.getElementById('results-container');
     const totalSummaryContainer = document.getElementById('total-summary-container');
+    const dropZone = document.getElementById('drop-zone');
+    const chooseFilesBtn = document.getElementById('choose-files');
+    const fileListEl = document.getElementById('file-list');
+
+    // internal list of selected files (File objects)
+    let selectedFiles = [];
+
+    function refreshFileList() {
+        // Update single-line upload summary under the CTA
+        const summaryEl = document.getElementById('upload-summary');
+        if (!summaryEl) return;
+        if (!selectedFiles || selectedFiles.length === 0) {
+            summaryEl.textContent = '';
+            // hide detailed file list
+            if (fileListEl) fileListEl.style.display = 'none';
+            return;
+        }
+        if (selectedFiles.length === 1) {
+            summaryEl.textContent = `Załadowano plik: ${selectedFiles[0].name}`;
+        } else {
+            summaryEl.textContent = `Załadowano ${selectedFiles.length} plików`;
+        }
+        // hide detailed file list (we only show the single-line summary now)
+        if (fileListEl) fileListEl.style.display = 'none';
+    }
+
+    if (chooseFilesBtn) {
+        chooseFilesBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            fileInput.click();
+        });
+    }
+
+    // make entire drop zone clickable and keyboard accessible
+    if (dropZone) {
+        dropZone.addEventListener('click', (e) => {
+            fileInput.click();
+        });
+        dropZone.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                fileInput.click();
+            }
+        });
+    }
+
+    // wire native file input to update selectedFiles
+    fileInput.addEventListener('change', (ev) => {
+        const files = Array.from(ev.target.files || []);
+        if (files.length) {
+            selectedFiles = selectedFiles.concat(files);
+            refreshFileList();
+        }
+    });
+
+    // drag & drop handlers
+    if (dropZone) {
+        ['dragenter', 'dragover'].forEach(ev => dropZone.addEventListener(ev, (e) => {
+            e.preventDefault(); e.stopPropagation();
+            dropZone.classList.add('is-dragover');
+        }));
+        ['dragleave', 'drop'].forEach(ev => dropZone.addEventListener(ev, (e) => {
+            e.preventDefault(); e.stopPropagation();
+            dropZone.classList.remove('is-dragover');
+        }));
+        dropZone.addEventListener('drop', (e) => {
+            const dtFiles = Array.from(e.dataTransfer.files || []);
+            if (dtFiles.length) {
+                // filter for .csv
+                const csvs = dtFiles.filter(f => f.name.toLowerCase().endsWith('.csv'));
+                selectedFiles = selectedFiles.concat(csvs);
+                refreshFileList();
+            }
+        });
+    }
 
     calculateBtn.addEventListener('click', handleCalculation);
 
     async function handleCalculation() {
-        const files = fileInput.files;
-        if (files.length === 0) {
+        const files = selectedFiles;
+        if (!files || files.length === 0) {
             updateStatus('Proszę wybrać przynajmniej jeden plik CSV.', 'error');
             return;
         }
 
-        // Reset UI
-        const hourlyResultsContent = document.getElementById('hourly-results-content');
-        const monthlyResultsContent = document.getElementById('monthly-results-content');
-        
-        hourlyResultsContent.innerHTML = '';
-        monthlyResultsContent.innerHTML = '';
-        resultsContainer.style.display = 'none';
-        totalSummaryContainer.innerHTML = '';
-        totalSummaryContainer.style.display = 'none';
+    // Reset UI
+    const monthsContainer = document.getElementById('months-container');
+    if (monthsContainer) monthsContainer.innerHTML = '';
+    if (resultsContainer) resultsContainer.style.display = 'none';
+    totalSummaryContainer.innerHTML = '';
+    totalSummaryContainer.style.display = 'none';
         calculateBtn.setAttribute('aria-busy', 'true');
         calculateBtn.disabled = true;
 
@@ -39,8 +111,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         fileName: file.name,
                         error: 'Nie znaleziono poprawnych danych w pliku.'
                     };
-                    displayResult(errorResult, 'hourly');
-                    displayResult(errorResult, 'monthly');
+                    displayError(errorResult);
                     continue;
                 }
 
@@ -68,7 +139,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         error: `Błąd RCE: ${hourlyError.message}`,
                         calculationMethod: 'hourly'
                     };
-                    displayResult(errorResult, 'hourly');
+                    displayError(errorResult);
                 }
 
                 try {
@@ -89,7 +160,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         error: `Błąd RCEm: ${monthlyError.message}`,
                         calculationMethod: 'monthly'
                     };
-                    displayResult(errorResult, 'monthly');
+                    displayError(errorResult);
                 }
 
             } catch (error) {
@@ -97,28 +168,70 @@ document.addEventListener('DOMContentLoaded', () => {
                     fileName: file.name,
                     error: `Wystąpił błąd: ${error.message}`
                 };
-                displayResult(errorResult, 'hourly');
-                displayResult(errorResult, 'monthly');
+                displayError(errorResult);
             }
         }
         
-        // Sort and display all results
+        // Sort results by date
         allHourlyResults.sort((a, b) => a.startDate - b.startDate);
         allMonthlyResults.sort((a, b) => a.startDate - b.startDate);
-        
-        allHourlyResults.forEach(result => displayResult(result, 'hourly'));
-        allMonthlyResults.forEach(result => displayResult(result, 'monthly'));
 
-        // Show results container
-        resultsContainer.style.display = 'block';
-
-        // Display total summary
-        const validHourlyResults = allHourlyResults.filter(r => !r.error);
-        const validMonthlyResults = allMonthlyResults.filter(r => !r.error);
-        
-        if (validHourlyResults.length > 0 || validMonthlyResults.length > 0) {
-            displayTotalSummary(validHourlyResults, validMonthlyResults);
+        // Build per-month map where key = YYYY-MM
+        const monthMap = {};
+        function putIntoMap(arr, kind) {
+            for (const r of arr) {
+                if (!r || r.error || !r.startDate) continue;
+                const key = `${r.startDate.getFullYear()}-${String(r.startDate.getMonth() + 1).padStart(2,'0')}`;
+                monthMap[key] = monthMap[key] || {};
+                monthMap[key][kind] = r;
+            }
         }
+        putIntoMap(allMonthlyResults, 'monthly');
+        putIntoMap(allHourlyResults, 'hourly');
+
+        // Prepare keys and containers
+        const keys = Object.keys(monthMap).sort();
+        const accordion = document.getElementById('accordion-container');
+        const detailsHeading = document.getElementById('details-heading');
+
+        // Show summary first
+        const validHourlyResults = allHourlyResults.filter(r => !r.error && r.startDate);
+        const validMonthlyResults = allMonthlyResults.filter(r => !r.error && r.startDate);
+        if (validHourlyResults.length > 0 || validMonthlyResults.length > 0) {
+            displayTotalSummary(validHourlyResults, validMonthlyResults, keys);
+        }
+
+        // Then build accordion of months (each month in a closed <details>)
+        if (accordion) {
+            accordion.innerHTML = '';
+            if (keys.length > 0) {
+                detailsHeading.style.display = 'block';
+                accordion.style.display = 'block';
+                for (const k of keys) {
+                    const monthParts = k.split('-');
+                    const monthLabel = new Intl.DateTimeFormat('pl-PL', { year: 'numeric', month: 'long' }).format(new Date(`${monthParts[0]}-${monthParts[1]}-01`));
+
+                    const details = document.createElement('details');
+                    const summary = document.createElement('summary');
+                    summary.textContent = monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1);
+                    details.appendChild(summary);
+
+                    // create month card and remove its H3 (we want header in summary)
+                    const card = renderMonthCard(k, monthMap[k].monthly, monthMap[k].hourly);
+                    const h3 = card.querySelector('h3');
+                    if (h3) h3.remove();
+                    details.appendChild(card);
+
+                    accordion.appendChild(details);
+                }
+            } else {
+                detailsHeading.style.display = 'none';
+                accordion.style.display = 'none';
+            }
+        }
+
+        // show results area (summary + accordion)
+        totalSummaryContainer.style.display = 'block';
 
         updateStatus('Zakończono przetwarzanie wszystkich plików.', 'success');
         calculateBtn.removeAttribute('aria-busy');
@@ -466,124 +579,177 @@ async function fetchOfficialRCEm(month, year) {
         }
 
         // Współczynnik 1.23 stosowany dla depozytów ustalanych od lutego 2025
-        // (czyli dla energii oddanej od stycznia 2025)
         const cutoffDate = new Date('2025-01-01T00:00:00');
-        const hasDataAfterCutoff = userData.some(row => row.energyKwh > 0 && row.dateTime >= cutoffDate);
-        
-        if (hasDataAfterCutoff) {
-            totalValue *= 1.23;
-        }
+        const multiplierApplied = userData.some(row => row.energyKwh > 0 && row.dateTime >= cutoffDate);
 
-        return { totalValue, totalEnergy, multiplierApplied: hasDataAfterCutoff };
+        const baseValue = totalValue;
+        const multipliedValue = multiplierApplied ? baseValue * 1.23 : baseValue;
+
+        // Round energy to integer (as requested) and values to 2 decimals
+        return { totalValue: +baseValue.toFixed(2), totalEnergy: Math.round(totalEnergy), multipliedValue: +multipliedValue.toFixed(2), multiplierApplied };
     }
 
     function calculateMonthlyDepositValue(userData, monthlyPrice, priceSource) {
         const totalEnergy = userData.reduce((sum, row) => sum + (row.energyKwh > 0 ? row.energyKwh : 0), 0);
-        let totalValue = totalEnergy * monthlyPrice;
-
-        // Współczynnik 1.23 stosowany dla depozytów ustalanych od lutego 2025
-        // (czyli dla energii oddanej od stycznia 2025)
+        const baseValue = totalEnergy * monthlyPrice;
         const cutoffDate = new Date('2025-01-01T00:00:00');
-        const hasDataAfterCutoff = userData.some(row => row.energyKwh > 0 && row.dateTime >= cutoffDate);
-        
-        if (hasDataAfterCutoff) {
-            totalValue *= 1.23;
-        }
-
-        return { totalValue, totalEnergy, monthlyPrice, multiplierApplied: hasDataAfterCutoff, priceSource };
+        const multiplierApplied = userData.some(row => row.energyKwh > 0 && row.dateTime >= cutoffDate);
+        const multipliedValue = multiplierApplied ? baseValue * 1.23 : baseValue;
+        return { totalValue: +baseValue.toFixed(2), totalEnergy: Math.round(totalEnergy), monthlyPrice, multipliedValue: +multipliedValue.toFixed(2), multiplierApplied, priceSource };
     }
 
-    function displayResult(result, method) {
+    // Render per-month card combining monthly and hourly data
+    function renderMonthCard(key, monthly, hourly) {
+        const container = document.createElement('article');
+        container.className = 'result-item';
+
+        // key = YYYY-MM
+        const [y, m] = key.split('-');
+        const monthName = new Intl.DateTimeFormat('pl-PL', { year: 'numeric', month: 'long' }).format(new Date(`${y}-${m}-01`));
+
+        // Calculate totalEnergy (prefer monthly.totalEnergy if present, else hourly)
+        const totalEnergy = (monthly && typeof monthly.totalEnergy === 'number') ? monthly.totalEnergy : (hourly && typeof hourly.totalEnergy === 'number' ? hourly.totalEnergy : 0);
+
+        // Monthly block with grid layout and badges
+        const rceValue = hourly && typeof hourly.totalValue === 'number' ? hourly.totalValue.toFixed(2) : null;
+        const rceValueMult = hourly && typeof hourly.multipliedValue === 'number' ? hourly.multipliedValue.toFixed(2) : null;
+        const rcemPrice = monthly && typeof monthly.monthlyPrice === 'number' ? monthly.monthlyPrice.toFixed(5) : null;
+        const rcemValue = monthly && typeof monthly.totalValue === 'number' ? monthly.totalValue.toFixed(2) : null;
+        const rcemValueMult = monthly && typeof monthly.multipliedValue === 'number' ? monthly.multipliedValue.toFixed(2) : null;
+
+        // Badges for sections (RCEm badge includes price)
+    // Add a single 'Dane PSE' badge next to the hourly prices title
+    const rceSectionBadge = rceValue ? '<span class="badge badge-rce">Ceny godzinowe - RCE</span> <span class="badge badge-estimate">Dane PSE</span>' : '<span class="badge badge-missing">brak RCE</span>';
+        // RCEm: separate label badge and value badge (value shown in its own badge)
+        let rcemSectionBadge;
+        if (rcemPrice) {
+            rcemSectionBadge = `<span class="badge badge-rcem">Cena miesięczna - RCEm</span> <span class="badge badge-rcem">${rcemPrice} zł/kWh</span>`;
+        } else {
+            rcemSectionBadge = '<span class="badge badge-missing">brak RCEm</span>';
+        }
+
+        container.innerHTML = `
+            <h3>${monthName.charAt(0).toUpperCase() + monthName.slice(1)}</h3>
+            <p><strong>Całkowita energia oddana:</strong> <span class="stat">${totalEnergy}</span> <span class="unit">kWh</span></p>
+            <div class="card-grid">
+                <div class="card-section">
+                    <div class="badge-row-separator">${rceSectionBadge}</div>
+                    <p>Wartość depozytu: <span class="stat">${rceValue !== null ? rceValue : '--'}</span> <span class="unit">PLN</span></p>
+                    <p>Wartość (×1.23): <span class="stat">${rceValueMult !== null ? rceValueMult : '--'}</span> <span class="unit">PLN</span></p>
+                </div>
+                <div class="card-section">
+                    <div class="badge-row-separator">${rcemSectionBadge}</div>
+                    <p>Wartość depozytu: <span class="stat">${rcemValue !== null ? rcemValue : '--'}</span> <span class="unit">PLN</span></p>
+                    <p>Wartość (×1.23): <span class="stat">${rcemValueMult !== null ? rcemValueMult : '--'}</span> <span class="unit">PLN</span></p>
+                </div>
+            </div>
+        `;
+        return container;
+    }
+
+    // Display an error card when a file couldn't be processed
+    function displayError(err) {
+        const accordion = document.getElementById('accordion-container');
         const itemDiv = document.createElement('article');
         itemDiv.className = 'result-item';
-
-        const monthYear = result.startDate ? new Intl.DateTimeFormat('pl-PL', { year: 'numeric', month: 'long' }).format(result.startDate) : 'Brak daty';
-
-        if (result.error) {
-            itemDiv.innerHTML = `
-                <h3>Plik: ${result.fileName}</h3>
-                <p><strong>Błąd:</strong> ${result.error}</p>
-            `;
-        } else {
-            let priceInfo = '';
-            if (result.calculationMethod === 'monthly') {
-                priceInfo = `
-                    <p><strong>Cena miesięczna (RCEm):</strong> ${result.monthlyPrice.toFixed(5)} PLN/kWh</p>
-                    <p><small><strong>Źródło ceny:</strong> ${result.priceSource}</small></p>
-                `;
-                
-                // Jeśli cena pochodzi z rcem.json lub z wbudowanej tabeli - informujemy użytkownika.
-                // Brak oficjalnej RCEm jest sygnalizowany przez wyrzucony błąd wcześniej.
-                if (result.priceSource) {
-                    priceInfo += `<p><small>(${result.priceSource})</small></p>`;
-                }
-            } else {
-                priceInfo = `<p><strong>Metoda:</strong> Rynkowa Cena Energii godzinowa (RCE/RCEt)</p>`;
-            }
-
-            let multiplierInfo = '';
-            if (result.multiplierApplied) {
-                multiplierInfo = `<p><mark><strong>Zastosowano współczynnik 1.23</strong> (depozyt ustalany od lutego 2025)</mark></p>`;
-            }
-
-            itemDiv.innerHTML = `
-                <h3>${monthYear.charAt(0).toUpperCase() + monthYear.slice(1)}</h3>
-                <p><strong>Plik:</strong> ${result.fileName}</p>
-                ${priceInfo}
-                <p><strong>Całkowita energia oddana:</strong> ${result.totalEnergy.toFixed(3)} kWh</p>
-                <p><strong>Obliczona wartość depozytu:</strong> ${result.totalValue.toFixed(2)} PLN</p>
-                ${multiplierInfo}
-            `;
-        }
-        
-        // Wybierz odpowiedni kontener
-        const targetContainer = method === 'hourly' ? 
-            document.getElementById('hourly-results-content') : 
-            document.getElementById('monthly-results-content');
-        
-        targetContainer.appendChild(itemDiv);
+        itemDiv.innerHTML = `
+            <h3>Plik: ${err.fileName || 'Brak nazwy'}</h3>
+            <p><strong>Błąd:</strong> ${err.error || 'Nieznany błąd'}</p>
+        `;
+        if (accordion) accordion.appendChild(itemDiv);
     }
 
-    function displayTotalSummary(hourlyResults, monthlyResults) {
-        let summaryHtml = '<h2>Podsumowanie całkowite</h2>';
-        
-        if (hourlyResults.length > 0) {
-            const hourlyTotalEnergy = hourlyResults.reduce((sum, r) => sum + r.totalEnergy, 0);
-            const hourlyTotalValue = hourlyResults.reduce((sum, r) => sum + r.totalValue, 0);
-            
-            summaryHtml += `
-                <h3>RCE/RCEt (ceny godzinowe)</h3>
-                <p><strong>Łączna energia:</strong> ${hourlyTotalEnergy.toFixed(3)} kWh</p>
-                <p><strong>Łączna wartość depozytu:</strong> ${hourlyTotalValue.toFixed(2)} PLN</p>
-            `;
+    function displayTotalSummary(hourlyResults, monthlyResults, keys) {
+        const summaryEl = document.getElementById('total-summary-container');
+        let start = null, end = null;
+        if (keys && keys.length > 0) {
+            start = keys[0];
+            end = keys[keys.length-1];
         }
-        
-        if (monthlyResults.length > 0) {
-            const monthlyTotalEnergy = monthlyResults.reduce((sum, r) => sum + r.totalEnergy, 0);
-            const monthlyTotalValue = monthlyResults.reduce((sum, r) => sum + r.totalValue, 0);
-            
-            summaryHtml += `
-                <h3>RCEm (ceny miesięczne)</h3>
-                <p><strong>Łączna energia:</strong> ${monthlyTotalEnergy.toFixed(3)} kWh</p>
-                <p><strong>Łączna wartość depozytu:</strong> ${monthlyTotalValue.toFixed(2)} PLN</p>
-            `;
-            
-            // Porównanie jeśli mamy oba wyniki
-            if (hourlyResults.length > 0) {
-                const hourlyTotalValue = hourlyResults.reduce((sum, r) => sum + r.totalValue, 0);
-                const difference = monthlyTotalValue - hourlyTotalValue;
-                const percentageDiff = ((difference / hourlyTotalValue) * 100);
-                
-                summaryHtml += `
-                    <hr>
-                    <h3>Porównanie metod</h3>
-                    <p><strong>Różnica (RCEm - RCE):</strong> ${difference > 0 ? '+' : ''}${difference.toFixed(2)} PLN 
-                    (${percentageDiff > 0 ? '+' : ''}${percentageDiff.toFixed(1)}%)</p>
-                `;
+
+        // Build maps for monthly and hourly by YYYY-MM
+        const monthlyMap = {};
+        for (const m of monthlyResults) {
+            const key = `${m.startDate.getFullYear()}-${String(m.startDate.getMonth()+1).padStart(2,'0')}`;
+            monthlyMap[key] = m;
+        }
+        const hourlyMap = {};
+        for (const h of hourlyResults) {
+            const key = `${h.startDate.getFullYear()}-${String(h.startDate.getMonth()+1).padStart(2,'0')}`;
+            hourlyMap[key] = h;
+        }
+
+        // Sum per-key energies preferring monthly totalEnergy when present
+        let totalEnergySum = 0;
+        if (keys && keys.length > 0) {
+            for (const k of keys) {
+                if (monthlyMap[k] && typeof monthlyMap[k].totalEnergy === 'number') totalEnergySum += monthlyMap[k].totalEnergy;
+                else if (hourlyMap[k] && typeof hourlyMap[k].totalEnergy === 'number') totalEnergySum += hourlyMap[k].totalEnergy;
             }
         }
-        
-        totalSummaryContainer.innerHTML = summaryHtml;
-        totalSummaryContainer.style.display = 'block';
+
+        // Build a card-like layout matching per-month cards
+        let html = '';
+        html += `<h3>Podsumowanie</h3>`;
+        if (start && end) {
+            const startLabel = new Intl.DateTimeFormat('pl-PL', { year: 'numeric', month: 'long' }).format(new Date(`${start}-01`));
+            const endLabel = new Intl.DateTimeFormat('pl-PL', { year: 'numeric', month: 'long' }).format(new Date(`${end}-01`));
+            html += `<p>Za okres: ${startLabel} do ${endLabel}</p>`;
+        }
+
+        html += `<p><strong>Łączna energia oddana:</strong> <span class="stat">${Math.round(totalEnergySum)}</span> <span class="unit">kWh</span></p>`;
+
+        // Card-grid with two sections (RCE and RCEm)
+        html += `<div class="card-grid">`;
+
+        // RCE section
+        const hasHourly = hourlyResults.length > 0;
+        if (hasHourly) {
+            const hourlyTotalValue = hourlyResults.reduce((s,r)=>s + r.totalValue, 0);
+            const hourlyTotalMult = hourlyResults.reduce((s,r)=>s + r.multipliedValue, 0);
+            const rceBadge = `<span class="badge badge-rce">Ceny godzinowe - RCE</span> <span class="badge badge-estimate">Dane PSE</span>`;
+            html += `
+                <div class="card-section">
+                    <div class="badge-row-separator">${rceBadge}</div>
+                    <p>Wartość depozytu: <span class="stat">${hourlyTotalValue.toFixed(2)}</span> <span class="unit">PLN</span></p>
+                    <p>Wartość (×1.23): <span class="stat">${hourlyTotalMult.toFixed(2)}</span> <span class="unit">PLN</span></p>
+                </div>
+            `;
+        } else {
+            html += `
+                <div class="card-section">
+                    <div class="badge-row-separator"><span class="badge badge-missing">brak RCE</span></div>
+                    <p>Wartość depozytu: <span class="stat">--</span> <span class="unit">PLN</span></p>
+                    <p>Wartość (×1.23): <span class="stat">--</span> <span class="unit">PLN</span></p>
+                </div>
+            `;
+        }
+
+        // RCEm section
+        if (monthlyResults.length > 0) {
+            const monthlyTotalValue = monthlyResults.reduce((s,r)=>s + r.totalValue, 0);
+            const monthlyTotalMult = monthlyResults.reduce((s,r)=>s + r.multipliedValue, 0);
+            const rcemBadge = `<span class="badge badge-rcem">Cena miesięczna - RCEm</span>`;
+            html += `
+                <div class="card-section">
+                    <div class="badge-row-separator">${rcemBadge}</div>
+                    <p>Wartość depozytu: <span class="stat">${monthlyTotalValue.toFixed(2)}</span> <span class="unit">PLN</span></p>
+                    <p>Wartość (×1.23): <span class="stat">${monthlyTotalMult.toFixed(2)}</span> <span class="unit">PLN</span></p>
+                </div>
+            `;
+        } else {
+            html += `
+                <div class="card-section">
+                    <div class="badge-row-separator"><span class="badge badge-missing">brak RCEm</span></div>
+                    <p>Wartość depozytu: <span class="stat">--</span> <span class="unit">PLN</span></p>
+                    <p>Wartość (×1.23): <span class="stat">--</span> <span class="unit">PLN</span></p>
+                </div>
+            `;
+        }
+
+        html += `</div>`;
+
+        summaryEl.innerHTML = html;
+        summaryEl.style.display = 'block';
     }
 });

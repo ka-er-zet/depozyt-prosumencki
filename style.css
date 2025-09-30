@@ -1,4 +1,8 @@
 /* Dodatkowe style, które nie są w Pico.css */
+:root {
+    /* override Pico.css vertical spacing variable for typography */
+    --typography-spacing-vertical: 0.8;
+}
 #total-summary-container {
     margin-top: 2rem;
     border: 2px solid var(--primary);
@@ -6,13 +10,125 @@
     border-radius: var(--border-radius);
 }
 
+/* spacing specifically for the file input section */
+.file-input-section {
+    margin-bottom: 1rem;
+    margin-top: 1.5rem;
+}
+
+.drop-zone {
+    border: 2px dashed var(--primary);
+    border-radius: 0.6rem;
+    padding: 1rem;
+    text-align: center;
+    background: transparent; /* transparent by request */
+    display: block;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-sizing: border-box;
+    /* stretch to full viewport width while staying centered */
+        width: 100%;
+        margin: 0 auto;
+}
+.drop-zone:focus {
+    outline: 3px solid rgba(43,158,74,0.18);
+    outline-offset: 4px;
+}
+/* hover and dragover show semi-opaque background */
+.drop-zone:hover,
+.drop-zone.is-dragover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.5);
+}
+.drop-inner { text-align: center; }
+.drop-inner svg { display:block; margin: 0 auto 0.5rem; color: var(--primary); width: 36px; height: 36px; }
+.drop-title { font-weight: 700; margin: 0 0 0.2rem; font-size: 0.95rem; }
+.drop-sub { margin: 0; color: var(--muted); font-size: 0.9rem; }
+.file-list { list-style: none; padding: 0.5rem 0 0 0; margin: 0; max-width: 560px; margin-left: auto; margin-right: auto; }
+.file-list li { padding: 0.6rem 0; border-bottom: 1px solid rgba(0,0,0,0.04); display:flex; justify-content:space-between; align-items:center; }
+.file-list li .remove { margin-left: 1rem; color: var(--muted); cursor: pointer; background: none; border: none; }
+.file-list li .name { flex: 1 1 auto; }
+.file-list li .size { color: var(--muted); margin-left: 0.5rem; font-size: 0.95rem; }
+
+/* Single-line upload summary under the CTA */
+.upload-summary { margin-top: 0.6rem; margin-bottom:1.5rem;: var(--muted); font-size: 0.95rem; text-align:center; }
+
 #total-summary-container h2 {
     margin-top: 0;
 }
 
 .result-item {
+    margin-top: 1.5rem;
     margin-bottom: 1rem;
     padding: 1rem;
     border: 1px solid var(--muted-border-color);
     border-radius: var(--border-radius);
+}
+
+/* New readable stats and badges */
+.result-item h3 { margin-top: 0; }
+.stat {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--primary);
+}
+.unit {
+    color: #fff; /* units should be white text */
+    font-size: 0.9rem;
+}
+.badge {
+    display: inline-block;
+    font-size: 0.9rem; /* increased badge font */
+    padding: 0.18rem 0.5rem;
+    border-radius: 0.35rem;
+    color: #fff;
+    /* removed margin-left as requested */
+}
+.badge-rcem { background: #2b9e4a; }
+.badge-rce { background: #2b7cd3; }
+.badge-missing { background: #f29d38; }
+.badge-estimate { background: #6b5fbd; }
+
+/* Card layout: two columns on wide screens, one on mobile */
+.card-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-top: 0.75rem;
+}
+.card-section {
+    padding: 1.5rem;
+    border: 1px solid var(--muted-border-color);
+    border-radius: calc(var(--border-radius) - 2px);
+    background: var(--surface);
+}
+.unit-rcem, .unit-rce, .unit-missing {
+    /* kept for possible legacy usage but units are now plain white text */
+    display: inline-block;
+    padding: 0.08rem 0.3rem;
+    border-radius: 0.35rem;
+    color: #fff;
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+.unit-rcem { background: transparent; }
+.unit-rce { background: transparent; }
+.unit-missing { background: transparent; }
+
+/* Align badge container to left and remove extra indent */
+.card-section > div {
+    margin: 0 0 0.75rem 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.card-section .badge-row-separator {
+    border-bottom: 1px solid rgba(0,0,0,0.06);
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.5rem;
+}
+.badge { vertical-align: middle; }
+@media (max-width: 700px) {
+    .card-grid { grid-template-columns: 1fr; }
 }
