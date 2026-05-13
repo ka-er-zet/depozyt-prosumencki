@@ -54,7 +54,13 @@
 .file-list li .size { color: var(--muted-color); margin-left: 0.5rem; font-size: 0.95rem; }
 
 /* Single-line upload summary under the CTA */
-.upload-summary { margin-top: 0.6rem; margin-bottom:1.5rem; color: var(--muted-color); font-size: 0.95rem; text-align:center; }
+.upload-summary {
+    margin-top: 0.6rem;
+    margin-bottom: 1.5rem;
+    color: var(--muted-color);
+    font-size: 0.95rem;
+    text-align: center;
+}
 
 #total-summary-container h2 {
     margin-top: 0;
